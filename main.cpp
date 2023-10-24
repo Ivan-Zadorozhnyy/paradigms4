@@ -1,65 +1,91 @@
 #include <iostream>
 #include <fstream>
-#include <stdexcept>
-#include <cstring>
-#include <ctime>
-#include <cstdlib>
-#include <filesystem>
+#include <windows.h>
+#include <random>
+#include <vector>
 
-extern "C" {
-char* encrypt(char* rawText, int key);
-char* decrypt(char* encryptedText, int key);
-}
+constexpr size_t CHUNK_SIZE = 128;
 
-class IReader
-{
+typedef char* (*encrypt_ptr_t)(char*, int);
+typedef char* (*decrypt_ptr_t)(char*, int);
+
+class IReader {
 public:
     virtual ~IReader() {}
-    virtual void read(const string& filePath, char*& buffer, streamsize& size) = 0;
+    virtual std::vector<std::string> read(const char* path) = 0;
 };
 
-class FileReader : public IReader
-{
+class FileReader : public IReader {
 public:
-    virtual void read(const string& filePath, char*& buffer, streamsize& size)
-    {
-        ifstream file(filePath, ios::binary | ios::ate);
-        if (!file.is_open())
-        {
-            throw runtime_error("File not found or failed to open!");
+    std::vector<std::string> read(const char* path) override {
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error("File does not exist!");
         }
 
-        size = file.tellg();
-        file.seekg(0, ios::beg);
-        buffer = new char[size];
-        file.read(buffer, size);
+        std::vector<std::string> chunks;
+        char buffer[CHUNK_SIZE + 1] = {0};
+
+        while (file.read(buffer, CHUNK_SIZE)) {
+            chunks.push_back(std::string(buffer, CHUNK_SIZE));
+        }
+
+        if (file.gcount() > 0) {
+            chunks.push_back(std::string(buffer, file.gcount()));
+        }
+
         file.close();
+        return chunks;
     }
 };
 
 class IWriter {
 public:
     virtual ~IWriter() {}
-    virtual void write(const std::string &path, const char* data, std::streamsize size) = 0;
+    virtual void write(const char* path, const std::vector<std::string>& chunks) = 0;
 };
 
 class FileWriter : public IWriter {
 public:
-    void write(const std::string &path, const char* data, std::streamsize size) override {
-        std::ofstream file(path, std::ios::binary);
-        if (file.is_open()) {
+    void write(const char* path, const std::vector<std::string>& chunks) override {
+        std::ifstream checkFile(path);
+        if (checkFile.is_open()) {
+            checkFile.close();
             throw std::runtime_error("File already exists!");
         }
-        file.write(data, size);
+
+        std::ofstream file(path, std::ios::binary);
+        for (const auto& chunk : chunks) {
+            file.write(chunk.c_str(), chunk.size());
+        }
         file.close();
     }
 };
+
+
+
+
+
 
 int main() {
     int choice, key, mode;
     std::string inputPath, outputPath;
     char* buffer;
     std::streamsize size;
+
+    HINSTANCE hGetProcIDDLL = LoadLibrary("caesar.dll");
+    if (!hGetProcIDDLL) {
+        std::cerr << "Could not load the dynamic library" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    encrypt_ptr_t encryptFunc = (encrypt_ptr_t) GetProcAddress(hGetProcIDDLL, "encrypt");
+    decrypt_ptr_t decryptFunc = (decrypt_ptr_t) GetProcAddress(hGetProcIDDLL, "decrypt");
+    if (!encryptFunc || !decryptFunc) {
+        std::cerr << "Failed to get function addresses from DLL." << std::endl;
+        FreeLibrary(hGetProcIDDLL);
+        return EXIT_FAILURE;
+    }
 
     IReader* reader = new FileReader();
     IWriter* writer = new FileWriter();
