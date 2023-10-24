@@ -62,18 +62,8 @@ public:
     }
 };
 
-
-
-
-
-
 int main() {
-    int choice, key, mode;
-    std::string inputPath, outputPath;
-    char* buffer;
-    std::streamsize size;
-
-    HINSTANCE hGetProcIDDLL = LoadLibrary("caesar.dll");
+    HINSTANCE hGetProcIDDLL = LoadLibrary("libCaesarCipher.dll");
     if (!hGetProcIDDLL) {
         std::cerr << "Could not load the dynamic library" << std::endl;
         return EXIT_FAILURE;
@@ -90,63 +80,75 @@ int main() {
     IReader* reader = new FileReader();
     IWriter* writer = new FileWriter();
 
-    std::cout << "Choose an operating mode:" << std::endl;
-    std::cout << "1. Normal mode" << std::endl;
-    std::cout << "2. Secret mode" << std::endl;
-    std::cout << "Enter mode choice: ";
+    int mode;
+    char inputPath[1024], outputPath[1024];
+    std::cout << "Select mode:\n1. Normal\n2. Secret\nEnter choice: ";
     std::cin >> mode;
     std::cin.ignore();
 
     if (mode == 1) {
-        std::cout << "Choose an option:" << std::endl;
-        std::cout << "1. Encrypt a file" << std::endl;
-        std::cout << "2. Decrypt a file" << std::endl;
-        std::cout << "Enter choice: ";
-        std::cin >> choice;
+        int operation;
+        std::cout << "1. Encrypt\n2. Decrypt\nEnter choice: ";
+        std::cin >> operation;
         std::cin.ignore();
 
-        std::cout << "Enter the input file path: ";
-        std::getline(std::cin, inputPath);
+        std::cout << "Enter input file path: ";
+        std::cin.getline(inputPath, sizeof(inputPath));
 
-        reader->read(inputPath, buffer, size);
+        std::cout << "Enter output file path: ";
+        std::cin.getline(outputPath, sizeof(outputPath));
 
-        std::cout << "Enter the output file path: ";
-        std::getline(std::cin, outputPath);
-
-        std::cout << "Enter the key for operation: ";
+        int key;
+        std::cout << "Enter key (for encryption/decryption): ";
         std::cin >> key;
 
-        if (choice == 1) {
-            char* encrypted = encrypt(buffer, key);
-            writer->write(outputPath, encrypted, size);
-            delete[] encrypted;
-        } else if (choice == 2) {
-            char* decrypted = decrypt(buffer, key);
-            writer->write(outputPath, decrypted, size);
-            delete[] decrypted;
+        try {
+            std::vector<std::string> chunks = reader->read(inputPath);
+            std::vector<std::string> processedChunks;
+            for (const auto& chunk : chunks) {
+                char* result;
+                if (operation == 1) {
+                    result = encryptFunc(const_cast<char*>(chunk.c_str()), key);
+                } else {
+                    result = decryptFunc(const_cast<char*>(chunk.c_str()), key);
+                }
+                processedChunks.push_back(std::string(result));
+                delete[] result;
+            }
+            writer->write(outputPath, processedChunks);
+        } catch (const std::runtime_error& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
         }
-
     } else if (mode == 2) {
-        std::cout << "Secret mode activated." << std::endl;
-        std::cout << "Enter the path of the file to encrypt: ";
-        std::getline(std::cin, inputPath);
+        std::random_device rd;
+        std::mt19937 mt(rd());
+        std::uniform_int_distribution<int> dist(1, 256);
+        int randomKey = dist(mt);
 
-        reader->read(inputPath, buffer, size);
+        std::cout << "Enter input file path: ";
+        std::cin.getline(inputPath, sizeof(inputPath));
 
-        key = generateRandomKey();
-        std::cout << "Using generated encryption key: " << key << std::endl;
-        char* encrypted = encrypt(buffer, key);
+        std::cout << "Enter output file path: ";
+        std::cin.getline(outputPath, sizeof(outputPath));
 
-        std::cout << "Enter the path to save the encrypted file: ";
-        std::getline(std::cin, outputPath);
-        writer->write(outputPath, encrypted, size);
-
-        delete[] encrypted;
+        try {
+            std::vector<std::string> chunks = reader->read(inputPath);
+            std::vector<std::string> processedChunks;
+            for (const auto& chunk : chunks) {
+                char* result = encryptFunc(const_cast<char*>(chunk.c_str()), randomKey);
+                processedChunks.push_back(std::string(result));
+                delete[] result;
+            }
+            writer->write(outputPath, processedChunks);
+        } catch (const std::runtime_error& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+        }
+    } else {
+        std::cerr << "Invalid mode selected!" << std::endl;
     }
 
-    delete[] buffer;
     delete reader;
     delete writer;
-
+    FreeLibrary(hGetProcIDDLL);
     return 0;
 }
