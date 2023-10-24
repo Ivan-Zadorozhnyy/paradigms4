@@ -28,3 +28,21 @@ public:
         file.close();
     }
 };
+
+class IWriter {
+public:
+    virtual ~IWriter() {}
+    virtual void write(const std::string &path, const char* data, std::streamsize size) = 0;
+};
+
+class FileWriter : public IWriter {
+public:
+    void write(const std::string &path, const char* data, std::streamsize size) override {
+        std::ofstream file(path, std::ios::binary);
+        if (file.is_open()) {
+            throw std::runtime_error("File already exists!");
+        }
+        file.write(data, size);
+        file.close();
+    }
+};
